@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GreenBuild | แคตตาล็อกวัสดุก่อสร้างรักษ์โลก</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { 
+            font-family: 'Kanit', sans-serif; 
+            background-color: #f8fafc; /* bg-slate-50 */
+        }
+        .card-hover {
+            transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+        }
+        .card-hover:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <div class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-white/80 backdrop-blur-lg sticky top-0 z-30 shadow-sm">
+            <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
+                    <h1 class="text-xl font-bold text-emerald-600">GreenBuild Catalog</h1>
+                </div>
+                <button id="back-button" class="hidden items-center gap-2 text-sm font-medium text-slate-600 hover:text-emerald-600 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    ย้อนกลับ
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container mx-auto px-6 py-8 flex-grow">
+            <!-- Breadcrumbs -->
+            <div id="breadcrumbs" class="mb-6 text-sm text-slate-500 font-light flex items-center gap-2"></div>
+            
+            <!-- Page Title -->
+            <div id="page-title-container" class="mb-8">
+                 <h2 id="page-title" class="text-3xl font-bold text-slate-800"></h2>
+                 <p id="page-subtitle" class="text-slate-500 mt-1"></p>
+            </div>
+
+            <!-- Content Area -->
+            <div id="content-area">
+                <!-- Loader -->
+                <div id="loader" class="text-center py-10 hidden">
+                    <div class="w-12 h-12 border-4 border-t-emerald-500 border-slate-200 rounded-full animate-spin mx-auto"></div>
+                    <p class="mt-4 text-slate-500">กำลังโหลดข้อมูล...</p>
+                </div>
+                <!-- Pages -->
+                <div id="home-page"></div>
+                <div id="categories-page" class="hidden"></div>
+                <div id="products-page" class="hidden"></div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-white mt-12 py-6 border-t border-slate-200">
+            <div class="container mx-auto px-6 text-center text-sm text-slate-500">
+                <p>&copy; 2024 GreenBuild Catalog. All Rights Reserved.</p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Supabase Client Setup ---
+            // !!! สำคัญ: กรุณาใส่ URL และ Key ของโปรเจกต์ Supabase ของคุณที่นี่ !!!
+            const SUPABASE_URL = 'https://pyfxrgrogevqlrqqiwks.supabase.co'; 
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZnhyZ3JvZ2V2cWxycXFpd2tzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5OTc4MjUsImV4cCI6MjA3NTU3MzgyNX0.NmTap3b7S5X7yKWfKHLc3KxeLARn9wTHMMpYBDZwWEg';
+
+            // --- Check for valid config ---
+            if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_URL.includes('YOUR_') || SUPABASE_ANON_KEY.includes('YOUR_')) {
+                document.getElementById('content-area').innerHTML = `
+                    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md" role="alert">
+                        <p class="font-bold">การตั้งค่าไม่สมบูรณ์</p>
+                        <p>กรุณาใส่ค่า <code>SUPABASE_URL</code> และ <code>SUPABASE_ANON_KEY</code> ที่ถูกต้องในโค้ด JavaScript ก่อนเริ่มใช้งาน</p>
+                    </div>
+                `;
+                return; // Stop execution if config is invalid
+            }
+            
+            // --- Initialize Supabase ---
+            const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            // --- DOM Elements ---
+            const pageTitle = document.getElementById('page-title');
+            const pageSubtitle = document.getElementById('page-subtitle');
+            const homePage = document.getElementById('home-page');
+            const categoriesPage = document.getElementById('categories-page');
+            const productsPage = document.getElementById('products-page');
+            const backButton = document.getElementById('back-button');
+            const loader = document.getElementById('loader');
+            const breadcrumbs = document.getElementById('breadcrumbs');
+
+            // --- App State ---
+            let state = {
+                view: 'home', // 'home', 'categories', 'products'
+                label: null, // 'CFP', 'CFR'
+                category: null,
+                history: [] // To manage back button functionality
+            };
+
+            // --- UI Rendering Functions ---
+
+            function createHomePage() {
+                return `
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div class="bg-white p-8 rounded-xl shadow-sm border border-slate-200 cursor-pointer card-hover" onclick="navigateTo('categories', { label: 'CFP' })">
+                            <div class="mb-4"><span class="text-3xl">🌎</span></div>
+                            <h3 class="text-xl font-semibold mb-2 text-emerald-700">ฉลากคาร์บอนฟุตพริ้นท์ของผลิตภัณฑ์ (CFP)</h3>
+                            <p class="text-slate-500">แสดงค่าการปล่อยก๊ซเรือนกระจกตลอดวัฏจักรชีวิตของผลิตภัณฑ์</p>
+                        </div>
+                        <div class="bg-white p-8 rounded-xl shadow-sm border border-slate-200 cursor-pointer card-hover" onclick="navigateTo('categories', { label: 'CFR' })">
+                            <div class="mb-4"><span class="text-3xl">🏢</span></div>
+                            <h3 class="text-xl font-semibold mb-2 text-blue-700">ฉลากลดคาร์บอน หรือคาร์บอนฟุตพริ้นท์ขององค์กร (CFR)</h3>
+                            <p class="text-slate-500">แสดงว่าผลิตภัณฑ์นั้นๆ ได้ผ่านการรับรองเครื่องหมายลดคาร์บอน</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            function createCategoryCard(category) {
+                const icon = category.toLowerCase().includes('คอนกรีต') ? '🧱' : 
+                             category.toLowerCase().includes('เหล็ก') ? '🔩' :
+                             category.toLowerCase().includes('ไม้') ? '🪵' : 
+                             category.toLowerCase().includes('กระเบื้อง') ? 'Tiles' : '🏗️';
+                
+                return `
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 cursor-pointer card-hover flex flex-col items-center text-center" onclick="navigateTo('products', { category: '${category}' })">
+                        <div class="text-4xl mb-4">${icon === 'Tiles' ? '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-500"><path d="M4 16l4-4 4 4"/><path d="M4 20h16"/><path d="M12 4v4l4 4"/><path d="M20 12l-4-4"/><path d="M16 4h4v4"/></svg>' : icon}</div>
+                        <h3 class="font-semibold text-slate-700">${category}</h3>
+                    </div>
+                `;
+            }
+
+            function createProductCard(material) {
+                const imageUrl = material.image_url && material.image_url !== 'N/A' 
+                    ? material.image_url 
+                    : `https://placehold.co/400x300/e2e8f0/64748b?text=${encodeURIComponent(material.product_name || 'No Image')}`;
+
+                const hasLink = material.detail_page_url && material.detail_page_url.trim() !== '';
+                const linkAction = hasLink ? `onclick="window.open('${material.detail_page_url}', '_blank')"` : '';
+                const cursorClass = hasLink ? 'cursor-pointer' : '';
+
+                return `
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col card-hover ${cursorClass}" ${linkAction}>
+                        <img src="${imageUrl}"
+                             alt="${material.product_name || 'รูปภาพสินค้า'}"
+                             class="w-full h-48 object-cover"
+                             onerror="this.onerror=null;this.src='https://placehold.co/400x300/fecaca/991b1b?text=Image+Error';">
+                        <div class="p-4 flex-grow flex flex-col">
+                            <h3 class="font-semibold text-slate-800 flex-grow" title="${material.product_name || ''}">
+                                ${material.product_name || 'ไม่มีชื่อสินค้า'}
+                            </h3>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // --- Data Fetching Functions ---
+
+            async function fetchCategories(label) {
+                // หมายเหตุ: Supabase ไม่มี distinct() แบบตรงๆ ที่ใช้กับ select() ได้ง่าย
+                // เราจะดึงข้อมูลมาทั้งหมดแล้วจัดการในฝั่ง client หรือใช้ RPC function ใน Supabase
+                // ในที่นี้จะจำลองการกรองฝั่ง client เพื่อความง่าย
+                // หากต้องการประสิทธิภาพที่ดีกว่า ควรสร้าง RPC function ที่ Supabase
+                let { data, error } = await _supabase
+                    .from('materials')
+                    .select('category')
+                    // .eq('label_type', label) // สมมติว่ามีคอลัมน์ 'label_type' สำหรับกรอง CFP/CFR
+                    .not('category', 'is', null)
+                    .order('category', { ascending: true });
+
+                if (error) {
+                    throw error;
+                }
+                // สร้าง list ของ category ที่ไม่ซ้ำกัน
+                const uniqueCategories = [...new Set(data.map(item => item.category))];
+                return uniqueCategories;
+            }
+
+            async function fetchProducts(category, label) {
+                 let { data, error } = await _supabase
+                    .from('materials')
+                    .select('*')
+                    .eq('category', category)
+                    // .eq('label_type', label) // ใส่เงื่อนไขนี้ด้วยหากมีข้อมูล label_type
+                    .order('product_name', { ascending: true })
+                    .limit(100);
+                
+                if (error) {
+                    throw error;
+                }
+                return data;
+            }
+
+            // --- Main App Logic ---
+
+            function updateUI() {
+                // Hide all pages
+                homePage.classList.add('hidden');
+                categoriesPage.classList.add('hidden');
+                productsPage.classList.add('hidden');
+
+                // Show current view
+                switch (state.view) {
+                    case 'home':
+                        pageTitle.textContent = "เลือกประเภทฉลาก";
+                        pageSubtitle.textContent = "เริ่มต้นค้นหาวัสดุก่อสร้างรักษ์โลกจากประเภทฉลากที่คุณสนใจ";
+                        homePage.innerHTML = createHomePage();
+                        homePage.classList.remove('hidden');
+                        backButton.classList.add('hidden');
+                        break;
+                    case 'categories':
+                        pageTitle.textContent = "เลือกหมวดหมู่วัสดุ";
+                        pageSubtitle.textContent = `ค้นหาวัสดุภายใต้ฉลากประเภท ${state.label}`;
+                        categoriesPage.classList.remove('hidden');
+                        backButton.classList.remove('hidden');
+                        loadData();
+                        break;
+                    case 'products':
+                        pageTitle.textContent = `ผลิตภัณฑ์ในหมวด "${state.category}"`;
+                        pageSubtitle.textContent = `รายการผลิตภัณฑ์ทั้งหมดภายใต้ฉลาก ${state.label}`;
+                        productsPage.classList.remove('hidden');
+                        backButton.classList.remove('hidden');
+                        loadData();
+                        break;
+                }
+                updateBreadcrumbs();
+            }
+
+            function updateBreadcrumbs() {
+                let breadcrumbHTML = '<a href="#" onclick="goHome()" class="hover:text-emerald-600">หน้าแรก</a>';
+                if (state.label) {
+                    breadcrumbHTML += `<span class="text-slate-400">/</span> <a href="#" onclick="goBack()" class="hover:text-emerald-600">${state.label}</a>`;
+                }
+                if (state.category) {
+                     breadcrumbHTML += `<span class="text-slate-400">/</span> <span class="font-medium text-slate-700">${state.category}</span>`;
+                }
+                breadcrumbs.innerHTML = breadcrumbHTML;
+            }
+
+            async function loadData() {
+                loader.classList.remove('hidden');
+                try {
+                    if (state.view === 'categories') {
+                        const categories = await fetchCategories(state.label);
+                        if (categories.length > 0) {
+                            const content = categories.map(createCategoryCard).join('');
+                            categoriesPage.innerHTML = `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">${content}</div>`;
+                        } else {
+                            categoriesPage.innerHTML = `<p class="text-center text-slate-500">ไม่พบหมวดหมู่สำหรับฉลากประเภท ${state.label}</p>`;
+                        }
+                    } else if (state.view === 'products') {
+                        const products = await fetchProducts(state.category, state.label);
+                        if (products.length > 0) {
+                            const content = products.map(createProductCard).join('');
+                            productsPage.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">${content}</div>`;
+                        } else {
+                             productsPage.innerHTML = `<p class="text-center text-slate-500">ไม่พบผลิตภัณฑ์ในหมวดหมู่นี้</p>`;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                    const targetPage = state.view === 'categories' ? categoriesPage : productsPage;
+                    targetPage.innerHTML = `<p class="text-center text-red-500">เกิดข้อผิดพลาด: ${error.message}</p>`;
+                } finally {
+                    loader.classList.add('hidden');
+                }
+            }
+
+            function navigateTo(view, params = {}) {
+                // Save current state to history before changing
+                state.history.push({ ...state });
+
+                // Update state
+                state.view = view;
+                if (params.label) state.label = params.label;
+                if (params.category) state.category = params.category;
+                
+                updateUI();
+            }
+            
+            function goBack() {
+                 if (state.history.length > 0) {
+                    state = state.history.pop();
+                    updateUI();
+                }
+            }
+            
+            function goHome() {
+                state = { view: 'home', label: null, category: null, history: [] };
+                updateUI();
+            }
+
+            // Expose functions to global scope for HTML onclick attributes
+            window.navigateTo = navigateTo;
+            window.goBack = goBack;
+            window.goHome = goHome;
+
+            // --- Event Listeners ---
+            backButton.addEventListener('click', goBack);
+
+            // --- Initial App Load ---
+            updateUI();
+        });
+    </script>
+</body>
+</html>
+
