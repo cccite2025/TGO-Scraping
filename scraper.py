@@ -108,17 +108,27 @@ def fetch_tgo_data_with_selenium(url_to_fetch):
             print("      ปิดเบราว์เซอร์...")
             driver.quit()
 
-# --- 5. เพิ่ม Dictionary คำสำคัญ ---
+# --- 5. เพิ่ม Dictionary คำสำคัญ (อัปเดตตามไฟล์ .pptx) ---
 CATEGORIES_KEYWORDS = {
-    "ปูนซีเมนต์และผลิตภัณฑ์คอนกรีต": ['ปูนซีเมนต์', 'ซีเมนต์', 'ปูน', 'ไฮดรอลิก', 'คอนกรีต', 'ผสมเสร็จ', 'มอร์ตาร์', 'ก่อ', 'ฉาบ', 'เท', 'อิฐบล็อก', 'บล็อก'],
+    # หมวด 1, 2, 5 จาก .pptx
+    "คอนกรีตและอิฐมวลเบา": ['คอนกรีต', 'ผสมเสร็จ', 'อิฐบล็อก', 'บล็อก', 'อิฐมวลเบา', 'Q-CON', 'SMART-EX4'],
+    "ปูนซีเมนต์ โครงสร้าง": ['ปูนซีเมนต์', 'ซีเมนต์', 'ปูน', 'ไฮดรอลิก', 'งานโครงสร้าง', 'งานหล่อ', 'ปอร์ตแลนด์', 'อินทรีเพชร', 'ปูนแดง 299'],
+    # หมวด 3 จาก .pptx
+    "ปูนก่อ-ฉาบ": ['มอร์ตาร์', 'ปูนก่อ', 'ปูนฉาบ', 'สกิมโคท', 'M300', 'M100', 'M200', 'M210', 'อินทรีมอร์ตาร์ 12', '13', '21', 'เสือ ซีเมนต์'],
+    # หมวด 4 จาก .pptx
+    "ปูนกาวปูกระเบื้อง": ['กาวซีเมนต์', 'ปูนกาว', 'M500', 'M501', 'เสือกาวซีเมนต์', 'จระเข้ เหลือง', 'เกเตอร์'],
     "ผลิตภัณฑ์เหล็ก": ['เหล็ก', 'เหล็กเส้น', 'เหล็กรูปพรรณ', 'ไวร์เมช', 'ตะแกรง', 'ลวด'],
     "กระเบื้องและเซรามิก": ['กระเบื้อง', 'เซรามิก', 'แกรนิตโต้', 'ปูพื้น', 'บุผนัง'],
-    "สีและเคมีภัณฑ์": ['สี', 'สีทา', 'เบส', 'รองพื้น', 'เคมีภัณฑ์', 'กันซึม', 'กาว', 'ยาแนว'],
+    # หมวด 7, 8 จาก .pptx
+    "สีและเคมีภัณฑ์": ['สี', 'สีทา', 'เบส', 'รองพื้น', 'เคมีภัณฑ์', 'กันซึม', 'ยาแนว', 'Organic care', 'SuperShield', 'BegerShield', 'AirCare', 'Health Care', 'Hybridshield'],
     "วัสดุมุงหลังคา": ['หลังคา', 'เมทัลชีท', 'ลอน', 'ซีแพค', 'กระเบื้องหลังคา'],
     "ฉนวนกันความร้อน": ['ฉนวน', 'ใยแก้ว', 'ใยหิน', 'พียูโฟม', 'PU Foam'],
     "ประตูและหน้าต่าง": ['ประตู', 'หน้าต่าง', 'วงกบ', 'uPVC', 'อลูมิเนียม'],
     "กระจก": ['กระจก'],
-    "สุขภัณฑ์": ['สุขภัณฑ์', 'ชักโครก', 'อ่างล้างหน้า', 'ก๊อก'],
+    # หมวด 6 จาก .pptx
+    "แผ่นยิปซั่ม": ['ยิปซั่ม', 'ยิปซัม', 'Gyproc', 'ตราช้าง พลัส', 'TOA ยิปซั่ม'],
+    # หมวด 9 (ยังไม่มีข้อมูล TGO)
+    # "สุขภัณฑ์": ['สุขภัณฑ์', 'ชักโครก', 'อ่างล้างหน้า', 'ก๊อก'], 
 }
 
 # --- 6. ฟังก์ชันแยกข้อมูล (สำหรับ style=_TABLE การ์ด + เพิ่ม Category) ---
@@ -140,22 +150,38 @@ def parse_product_data(html_content, year_be, quarter): # เพิ่ม quarte
     for i, row in enumerate(product_rows):
         table = row.find('table', class_='catalog-template')
         if not table: continue
-        product_id = f"CFP_Y{year_be}Q{quarter}_R{i+1}"; label_logo_type = "UNKNOWN"; product_name = None; functional_unit = None; scope = None; company_name = None; contact_person = None; phone = None; email = None; image_url = 'N/A'; detail_page_url = None; carbon_value = None; carbon_unit = None; cert_start_date_iso = None; cert_end_date_iso = None
+        
+        # --- (*** ส่วนที่แก้ไข Bug ***) ---
+        # 1. กำหนด ID เริ่มต้น และ Type เริ่มต้น
+        product_id = f"CFP_Y{year_be}Q{quarter}_R{i+1}" # ID เริ่มต้น (เผื่อหา header ไม่เจอ)
+        label_logo_type = "UNKNOWN"
+        product_name = None; functional_unit = None; scope = None; company_name = None; contact_person = None; phone = None; email = None; image_url = 'N/A'; detail_page_url = None; carbon_value = None; carbon_unit = None; cert_start_date_iso = None; cert_end_date_iso = None
         category = "อื่นๆ"
+        
         try:
+            # 2. พยายามดึง ID จริงจาก header
             header_span = table.find('th', class_='catalog-header').find('span')
             if header_span:
-                product_id = header_span.text.strip()
-                if "CFR" in product_id: label_logo_type = "CFR"
-                elif "CFP" in product_id: label_logo_type = "CFP"
+                product_id = header_span.text.strip() # ถ้าเจอ ใหเขียนทับ ID เริ่มต้น
+
+            # 3. (*** จุดที่แก้ไข ***) ตรวจสอบ label_type จาก product_id *ตัวสุดท้าย* (ไม่ว่าจะมาจาก header หรือเป็นตัว default)
+            if "CFR" in product_id: 
+                label_logo_type = "CFR"
+            elif "CFP" in product_id: 
+                label_logo_type = "CFP"
+            # --- (*** จบส่วนที่แก้ไข Bug ***) ---
+
             name_tag = table.find('h1')
             if name_tag: product_name = name_tag.text.strip()
+            
+            # 4. (ย้ายมาตรงนี้) ตรวจสอบ Category จาก product_name
             if product_name:
                 product_name_lower = product_name.lower()
                 for cat, keywords in CATEGORIES_KEYWORDS.items():
                     if any(keyword in product_name_lower for keyword in keywords):
                         category = cat
                         break
+                        
             col_r = table.find('td', class_='catalog-col-r')
             if col_r:
                 img_tag = col_r.find('img');
@@ -192,9 +218,10 @@ def parse_product_data(html_content, year_be, quarter): # เพิ่ม quarte
                     if carbon_value_str and carbon_value_str != '-':
                         try: carbon_value = float(carbon_value_str)
                         except ValueError: pass
-                date_match = re.search(r"(วันรับรอง|Date of Approval)[^:]*:\s*(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})", full_text_col_l);
+                date_match = re.search(r"(วันรับรอง|Date of Approval)[^:]*:\s*(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,G,2}/\d{1,2}/\d{4})", full_text_col_l);
                 if date_match:
                     cert_start_date_iso = convert_be_to_iso(date_match.group(2)); cert_end_date_iso = convert_be_to_iso(date_match.group(3))
+            
             product_data = {
                 "product_id": product_id, "label_type": label_logo_type,
                 "product_name": product_name, "category": category,
