@@ -44,7 +44,7 @@ def convert_be_to_iso(be_date_str):
     except (ValueError, AttributeError):
         return None
 
-# --- 4. ฟังก์ชันดึงข้อมูล (Selenium + รอ ตาราง หรือ ไม่พบข้อมูล) ---
+# --- 4. ฟังก์ชันดึงข้อมูล (Selenium + รอ ตาราง หรือ ไม่พบข้อมูล/รายการ) ---
 def fetch_tgo_data_with_selenium(url_to_fetch):
     """
     ใช้ Selenium เพื่อโหลด URL ที่ระบุ และรอ table หรือ no results (Timeout 3 นาที)
@@ -56,38 +56,46 @@ def fetch_tgo_data_with_selenium(url_to_fetch):
     options.add_argument("--log-level=3")
     driver = None
     try:
-        print("      กำลังเปิดเบราว์เซอร์ (Selenium)...") # เพิ่มเว้นวรรค
+        print("     กำลังเปิดเบราว์เซอร์ (Selenium)...") # เพิ่มเว้นวรรค
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
         driver.set_page_load_timeout(180) # 3 นาทีต่อหน้า
         driver.implicitly_wait(5)
 
-        print(f"      กำลังเข้าไปที่: {url_to_fetch}")
+        print(f"     กำลังเข้าไปที่: {url_to_fetch}")
         driver.get(url_to_fetch)
 
-        print("      รอให้หน้าเว็บโหลด...")
+        print("     รอให้หน้าเว็บโหลด...")
         wait = WebDriverWait(driver, 180) # 3 นาทีต่อหน้า
 
         table_selector = (By.CLASS_NAME, 'catalog-table')
-        no_results_selector = (By.CSS_SELECTOR, 'div.alert-warning, div:contains("ไม่พบข้อมูล")')
-        print(f"      รอให้ '{table_selector[1]}' หรือ '{no_results_selector[1]}' ปรากฏ...")
+        
+        # --- 🎯 [แก้ไข] ---
+        # เปลี่ยนเป็น XPATH เพื่อให้รองรับการตรวจสอบข้อความได้หลายแบบ
+        # (ตรวจสอบ class 'alert-warning' หรือ ข้อความ 'ไม่พบข้อมูล' หรือ ข้อความ 'ไม่พบรายการ')
+        no_results_selector = (By.XPATH, "//*[contains(@class, 'alert-warning') or contains(text(), 'ไม่พบข้อมูล') or contains(text(), 'ไม่พบรายการ')]")
+        # --- 🎯 [สิ้นสุดการแก้ไข] ---
+
+        # [แก้ไข] อัปเดต Log ให้สื่อความหมาย
+        print(f"     รอให้ '{table_selector[1]}' หรือ 'ข้อความไม่พบข้อมูล/รายการ' ปรากฏ...")
 
         element_found = wait.until(
-             EC.any_of(
-                 EC.presence_of_element_located(table_selector),
-                 EC.presence_of_element_located(no_results_selector)
-             )
+            EC.any_of(
+                EC.presence_of_element_located(table_selector),
+                EC.presence_of_element_located(no_results_selector) # <-- ใช้ตัวเลือกใหม่
+            )
         )
 
         try:
             driver.find_element(*table_selector) # ลองหาตาราง
-            print("      -> พบตารางข้อมูล!")
-            print("      รอเพิ่มเติม 5 วินาที...")
+            print("     -> พบตารางข้อมูล!")
+            print("     รอเพิ่มเติม 5 วินาที...")
             time.sleep(5)
-            print("      ✅ ตารางโหลดสำเร็จ! กำลังดึงโค้ด HTML...")
+            print("     ✅ ตารางโหลดสำเร็จ! กำลังดึงโค้ด HTML...")
             return driver.page_source
         except NoSuchElementException:
-            print("      -> ไม่พบตาราง (เจอข้อความ 'ไม่พบข้อมูล')")
+            # [แก้ไข] อัปเดต Log 
+            print("     -> ไม่พบตาราง (เจอข้อความ 'ไม่พบข้อมูล' หรือ 'ไม่พบรายการ')")
             return None # คืนค่า None ถ้าไม่มีข้อมูล
 
     except TimeoutException:
@@ -96,16 +104,16 @@ def fetch_tgo_data_with_selenium(url_to_fetch):
              if driver: current_state = driver.execute_script('return document.readyState;')
          except: pass
          if current_state != 'complete':
-             print(f"      ❌ เกิดข้อผิดพลาด: Timeout! หน้าเว็บโหลดไม่เสร็จ (State: {current_state}) ภายใน 3 นาที")
+             print(f"     ❌ เกิดข้อผิดพลาด: Timeout! หน้าเว็บโหลดไม่เสร็จ (State: {current_state}) ภายใน 3 นาที")
          else:
-             print(f"      ❌ เกิดข้อผิดพลาด: Timeout! ไม่พบทั้งตารางและข้อความ 'ไม่พบข้อมูล' ภายใน 3 นาที")
+             print(f"     ❌ เกิดข้อผิดพลาด: Timeout! ไม่พบทั้งตารางและข้อความ 'ไม่พบข้อมูล/รายการ' ภายใน 3 นาที")
          return None
     except Exception as e:
-        print(f"      ❌ เกิดข้อผิดพลาดระหว่างการทำงานของ Selenium: {e}")
+        print(f"     ❌ เกิดข้อผิดพลาดระหว่างการทำงานของ Selenium: {e}")
         return None
     finally:
         if driver:
-            print("      ปิดเบราว์เซอร์...")
+            print("     ปิดเบราว์เซอร์...")
             driver.quit()
 
 # --- 5. เพิ่ม Dictionary คำสำคัญ ---
@@ -230,68 +238,89 @@ def upload_to_supabase(products_list):
         print(f"   -> ❌ เกิดข้อผิดพลาดตอนส่งข้อมูลเข้า Supabase: {e}")
         return False
 
-# --- 8. ส่วนโปรแกรมหลัก (แบบวนลูป ปี -> ไตรมาส) ---
+# --- 8. ส่วนโปรแกรมหลัก (แบบวนลูป ปี -> ไตรมาส -> ประเภท + [แก้ไข] จัดระเบียบ print) ---
 if __name__ == "__main__":
-    start_year_be = 2010 # ปี พ.ศ. เริ่มต้น (2009)
-    end_year_be = 2025   # ปี พ.ศ. สิ้นสุด (2025)
+    start_year_be = 2010 # 🎯 ปี พ.ศ. เริ่มต้น (CFP เริ่ม 2010)
+    end_year_be = 2025  # ปี พ.ศ. สิ้นสุด
 
     total_products_scraped_all_periods = 0
-    processed_periods = 0
+    processed_tasks = 0
 
-    print(f"=== เริ่มกระบวนการดึงข้อมูล CFP (ก่อสร้าง, แบบการ์ด) รายไตรมาส พ.ศ. {start_year_be} - {end_year_be} ===")
+    print(f"=== เริ่มกระบวนการดึงข้อมูล CFP (2010+) และ CFR (2014+) ... ===")
 
-    # ล้างแคชก่อนเริ่ม (แนะนำให้ทำเอง)
-    # ...
+    # 🎯 กำหนดประเภทที่จะดึงข้อมูล
+    scrape_types = [
+        {"label": "CFP", "section": "_SBPRODUCTS"},
+        {"label": "CFR", "section": "_SBREDUCTION"}
+    ]
 
-    for year_be in range(start_year_be, end_year_be + 1):
+    for year_be in range(start_year_be, end_year_be + 1): # ลูปนี้เริ่มที่ 2010
         print(f"\n--- กำลังประมวลผลปี พ.ศ. {year_be} ---")
         
         # 🎯 วนลูปไตรมาส 1 ถึง 4
         for quarter in range(1, 5):
-            print(f"  --- ไตรมาส {quarter} ---")
+            print(f"  --- ไตรมาส {quarter} ---")
 
-            # สร้าง URL ที่ถูกต้อง (CFP, ก่อสร้าง, แบบการ์ด, ปี, ไตรมาส)
-            period_url = f'https://thaicarbonlabel.tgo.or.th/index.php?lang=TH&mod=WTJGMFlXeHZadz09&action=Y0c5emRBPT0&section=_SBPRODUCTS&industry=3&style=_ROW&sorting=_ASC&year={year_be}&quarter={quarter}'
-                          
-            html = fetch_tgo_data_with_selenium(period_url) # ใช้ Selenium ดึงข้อมูล
+            # 🎯 วนลูปตามประเภท (CFP ก่อน แล้ว CFR)
+            for scrape_type in scrape_types:
+                
+                label = scrape_type["label"]
+                section = scrape_type["section"]
 
-            if html:
-                # ใช้ Parser แบบการ์ด
-                products_this_period = parse_product_data(html, year_be, quarter)
+                # --- 🎯 [แก้ไข] ตรรกะการข้าม + จัดระเบียบ print ---
+                
+                # ข้ามเฉพาะ CFR ถ้ายีงไม่ถึงปี 2014
+                if label == "CFR" and year_be < 2014:
+                    # [ใหม่] แสดงผลแบบกระชับเมื่อข้าม
+                    print(f"    [ประเภท: {label}] ⚠️ ข้ามปี {year_be} (CFR เริ่ม 2014)") 
+                    processed_tasks += 1 
+                    continue # ข้ามไปงานถัดไป
+                
+                # [ใหม่] ย้าย print นี้มาไว้ตรงนี้ (จะทำงานเฉพาะเมื่อ "ไม่ข้าม")
+                print(f"\n    --- [ประเภท: {label}] ---") 
+                # --- 🎯 [สิ้นสุดการแก้ไข] ---
 
-                if products_this_period:
-                    initial_count = len(products_this_period)
+                # สร้าง URL ที่ถูกต้อง (CFP หรือ CFR)
+                period_url = f'https://thaicarbonlabel.tgo.or.th/index.php?lang=TH&mod=WTJGMFlXeHZadz09&action=Y0c5emRBPT0&section={section}&industry=3&style=_ROW&sorting=_ASC&year={year_be}&quarter={quarter}'
+                                    
+                html = fetch_tgo_data_with_selenium(period_url) 
 
-                    # กรอง ID ซ้ำ (ภายในไตรมาสนี้)
-                    unique_products_dict = {}
-                    for product in products_this_period:
-                        pid = product.get('product_id', f"TEMP_Y{year_be}Q{quarter}_{len(unique_products_dict)}")
-                        if pid != "ID_NOT_FOUND" and pid not in unique_products_dict:
-                            unique_products_dict[pid] = product
-                    unique_products_this_period = list(unique_products_dict.values())
-                    filtered_count = len(unique_products_this_period)
+                if html:
+                    products_this_period = parse_product_data(html, year_be, quarter)
 
-                    if filtered_count < initial_count:
-                        print(f"   ⚠️ กรอง ID ซ้ำแล้ว เหลือ {filtered_count} รายการในไตรมาสนี้")
+                    if products_this_period:
+                        initial_count = len(products_this_period)
 
-                    print(f"   ✅ แยกข้อมูลปี {year_be}/Q{quarter} สำเร็จ! ได้ {filtered_count} รายการ (หลังกรอง ID ซ้ำ)")
-                    total_products_scraped_all_periods += filtered_count
+                        unique_products_dict = {}
+                        for product in products_this_period:
+                            pid = product.get('product_id', f"TEMP_Y{year_be}Q{quarter}_{len(unique_products_dict)}")
+                            if pid != "ID_NOT_FOUND" and pid not in unique_products_dict:
+                                unique_products_dict[pid] = product
+                        unique_products_this_period = list(unique_products_dict.values())
+                        filtered_count = len(unique_products_this_period)
 
-                    # ส่งข้อมูล
-                    if not upload_to_supabase(unique_products_this_period):
-                        print(f"   ❌ ไม่สามารถส่งข้อมูลของปี {year_be}/Q{quarter} เข้า Supabase ได้, ข้าม...")
+                        if filtered_count < initial_count:
+                            print(f"   ⚠️ [{label}] กรอง ID ซ้ำแล้ว เหลือ {filtered_count} รายการในไตรมาสนี้")
+
+                        print(f"   ✅ [{label}] แยกข้อมูลปี {year_be}/Q{quarter} สำเร็จ! ได้ {filtered_count} รายการ (หลังกรอง ID ซ้ำ)")
+                        total_products_scraped_all_periods += filtered_count
+
+                        if not upload_to_supabase(unique_products_this_period):
+                            print(f"   ❌ [{label}] ไม่สามารถส่งข้อมูลของปี {year_be}/Q{quarter} เข้า Supabase ได้, ข้าม...")
+                    else:
+                        print(f"   ⚠️ [{label}] ไม่พบข้อมูลผลิตภัณฑ์ในปี {year_be}/Q{quarter} (Parser ไม่เจอข้อมูล)")
                 else:
-                     print(f"   ⚠️ ไม่พบข้อมูลผลิตภัณฑ์ในปี {year_be}/Q{quarter} (Parser ไม่เจอข้อมูล)")
-            else:
-                 print(f"   ⚠️ ไม่มีข้อมูล หรือ ไม่สามารถดึง HTML ของปี {year_be}/Q{quarter} ได้, ข้าม...")
+                    print(f"   ⚠️ [{label}] ไม่มีข้อมูล หรือ ไม่สามารถดึง HTML ของปี {year_be}/Q{quarter} ได้, ข้าม...")
 
-            processed_periods += 1
-            print(f"   --- สิ้นสุดไตรมาส {quarter}, หยุดพัก 3 วินาที ---") # ลดเวลาพัก
-            time.sleep(3) # พักระหว่างไตรมาส
+                processed_tasks += 1
+                if html: 
+                    print(f"   --- สิ้นสุด {label} ปี {year_be}/Q{quarter}, หยุดพัก 3 วินาที ---") 
+                    time.sleep(3) 
+
+            # 🎯 [ลบออก] บรรทัด "สิ้นสุดไตรมาส" ถูกลบออกจากตรงนี้
 
         print(f"--- สิ้นสุดปี {year_be} ---")
-        # ไม่ต้องพักเพิ่มตอนสิ้นปี
 
     print(f"\n=== สิ้นสุดกระบวนการ ===")
-    print(f"ประมวลผลทั้งหมด {processed_periods} ช่วงเวลา (ปี x ไตรมาส)")
-    print(f"ดึงข้อมูลผลิตภัณฑ์ CFP (ที่ไม่ซ้ำ ID) ได้ทั้งหมด: {total_products_scraped_all_periods} รายการ")
+    print(f"ประมวลผลทั้งหมด {processed_tasks} งาน (ปี x ไตรมาส x ประเภท, รวมที่ข้าม)")
+    print(f"ดึงข้อมูลผลิตภัณฑ์ (CFP+CFR) (ที่ไม่ซ้ำ ID) ได้ทั้งหมด: {total_products_scraped_all_periods} รายการ")
