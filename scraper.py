@@ -15,6 +15,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
 import json
 import re
+import joblib # เพิ่ม import นี้
 
 # --- 1. การตั้งค่าเริ่มต้น ---
 load_dotenv()
@@ -30,6 +31,20 @@ try:
 except Exception as e:
     print(f"❌ เชื่อมต่อ Supabase ไม่สำเร็จ: {e}")
     exit()
+# ... connect Supabase (ส่วนที่ 2) ...
+print("✅ เชื่อมต่อ Supabase สำเร็จ!")
+
+# --- [ใหม่] โหลดโมเดล AI ที่เราสร้างไว้ ---
+try:
+    print("🧠 กำลังโหลดโมเดล AI สำหรับจัดหมวดหมู่...")
+    category_classifier = joblib.load('category_model.joblib')
+    print("✅ โหลดโมเดล AI สำเร็จ!")
+except FileNotFoundError:
+    print("⚠️ ไม่พบไฟล์ 'category_model.joblib', จะใช้หมวดหมู่ 'อื่นๆ' แทน")
+    category_classifier = None
+except Exception as e:
+    print(f"❌ เกิดข้อผิดพลาดในการโหลดโมเดล AI: {e}")
+    category_classifier = None
 
 # --- 3. ฟังก์ชันแปลงวันที่ ---
 def convert_be_to_iso(be_date_str):
@@ -116,54 +131,118 @@ def fetch_tgo_data_with_selenium(url_to_fetch):
             print("     ปิดเบราว์เซอร์...")
             driver.quit()
 
-# --- 5. เพิ่ม Dictionary คำสำคัญ ---
+# --- 5. [แก้ไข] Dictionary คำสำคัญ (แบบจัดลำดับความสำคัญ) ---
 CATEGORIES_KEYWORDS = {
-    "ปูนซีเมนต์และผลิตภัณฑ์คอนกรีต": ['ปูนซีเมนต์', 'ซีเมนต์', 'ปูน', 'ไฮดรอลิก', 'คอนกรีต', 'ผสมเสร็จ', 'มอร์ตาร์', 'ก่อ', 'ฉาบ', 'เท', 'อิฐบล็อก', 'บล็อก'],
-    "ผลิตภัณฑ์เหล็ก": ['เหล็ก', 'เหล็กเส้น', 'เหล็กรูปพรรณ', 'ไวร์เมช', 'ตะแกรง', 'ลวด'],
-    "กระเบื้องและเซรามิก": ['กระเบื้อง', 'เซรามิก', 'แกรนิตโต้', 'ปูพื้น', 'บุผนัง'],
-    "สีและเคมีภัณฑ์": ['สี', 'สีทา', 'เบส', 'รองพื้น', 'เคมีภัณฑ์', 'กันซึม', 'กาว', 'ยาแนว'],
-    "วัสดุมุงหลังคา": ['หลังคา', 'เมทัลชีท', 'ลอน', 'ซีแพค', 'กระเบื้องหลังคา'],
-    "ฉนวนกันความร้อน": ['ฉนวน', 'ใยแก้ว', 'ใยหิน', 'พียูโฟม', 'PU Foam'],
-    "ประตูและหน้าต่าง": ['ประตู', 'หน้าต่าง', 'วงกบ', 'uPVC', 'อลูมิเนียม'],
-    "กระจก": ['กระจก'],
-    "สุขภัณฑ์": ['สุขภัณฑ์', 'ชักโครก', 'อ่างล้างหน้า', 'ก๊อก'],
+    # 🎯 หมวดหลัก (คำเฉพาะ จะถูกให้คะแนนสูง)
+    "ปูนซีเมนต์และผลิตภัณฑ์คอนกรีต": {
+        "priority": ['ปูนซีเมนต์', 'ซีเมนต์', 'ปูนไฮดรอลิก', 'คอนกรีตผสมเสร็จ', 'มอร์ตาร์', 'ปูนก่อ', 'ปูนฉาบ', 'ปูนเท', 'อิฐบล็อก', 'บล็อกคอนกรีต'],
+        "secondary": ['ปูน', 'คอนกรีต', 'ก่อ', 'ฉาบ', 'เท', 'บล็อก']
+    },
+    "ผลิตภัณฑ์เหล็ก": {
+        "priority": ['เหล็กเส้น', 'เหล็กรูปพรรณ', 'ไวร์เมช', 'ตะแกรงเหล็ก', 'ลวดเหล็ก'],
+        "secondary": ['เหล็ก', 'ตะแกรง', 'ลวด']
+    },
+    "กระเบื้องและเซรามิก": {
+        "priority": ['กระเบื้องเซรามิก', 'แกรนิตโต้', 'กระเบื้องปูพื้น', 'กระเบื้องบุผนัง'],
+        "secondary": ['กระเบื้อง', 'เซรามิก']
+    },
+    "สีและเคมีภัณฑ์": {
+        "priority": ['สีทาอาคาร', 'สีรองพื้น', 'กันซึม', 'กาวยาแนว', 'เคมีภัณฑ์ก่อสร้าง', 'กาวซีเมนต์'],
+        "secondary": ['สี', 'สีทา', 'เบส', 'รองพื้น', 'กาว', 'ยาแนว']
+    },
+    "วัสดุมุงหลังคา": {
+        "priority": ['เมทัลชีท', 'กระเบื้องหลังคา', 'ซีแพค', 'ลอนคู่'],
+        "secondary": ['หลังคา', 'ลอน']
+    },
+    "ฉนวนกันความร้อน": {
+        "priority": ['ฉนวนใยแก้ว', 'ฉนวนใยหิน', 'พียูโฟม', 'PU Foam'],
+        "secondary": ['ฉนวน']
+    },
+    "ประตูและหน้าต่าง": {
+        "priority": ['ประตู', 'หน้าต่าง', 'วงกบ', 'uPVC', 'อลูมิเนียม'], # หมวดนี้คำค่อนข้างเฉพาะอยู่แล้ว
+        "secondary": []
+    },
+    "กระจก": {
+        "priority": ['กระจก'], # คำเฉพาะ
+        "secondary": []
+    },
+    "สุขภัณฑ์": {
+        "priority": ['สุขภัณฑ์', 'ชักโครก', 'อ่างล้างหน้า', 'ก๊อก'], # คำเฉพาะ
+        "secondary": []
+    },
+    
+    # 🎯 หมวดรอง (คำทั่วไป จะถูกให้คะแนนต่ำ)
+    "วัสดุผนังและฝ้า": {
+        "priority": ['ยิปซั่ม', 'แผ่นฝ้า', 'สมาร์ทบอร์ด', 'วีว่าบอร์ด'],
+        "secondary": ['ผนัง', 'ฝ้า', 'ปูพื้น', 'บุผนัง'] # คำกว้างๆ ที่อาจซ้ำกับหมวดอื่น
+    }
 }
-
-# --- 6. ฟังก์ชันแยกข้อมูล (สำหรับ style=_TABLE การ์ด + เพิ่ม Category) ---
+# --- 6. ฟังก์ชันแยกข้อมูล ([แก้ไข] ใช้โมเดล AI แทน Keyword) ---
 def parse_product_data(html_content, year_be, quarter): # เพิ่ม quarter สำหรับ Debug
     if not html_content: return []
-    print(f"   กำลังแยกข้อมูล (Parsing) ปี {year_be} ไตรมาส {quarter} แบบการ์ด...")
+    print(f"   กำลังแยกข้อมูล (Parsing) ปี {year_be} ไตรมาส {quarter} แบบการ์ด...")
+    # ... (โค้ด BeautifulSoup, ค้นหา main_table, product_rows เหมือนเดิม) ...
     soup = BeautifulSoup(html_content, 'html.parser')
     all_products = []
-    main_table = soup.find('table', class_='catalog-table') # <--- ชื่อ class นี้ถูกต้องตามที่เราเคยยืนยัน
+    main_table = soup.find('table', class_='catalog-table') 
     if not main_table:
-        print(f"   ⚠️ ไม่พบตารางหลัก 'catalog-table' ในปี {year_be}/Q{quarter}!")
+        print(f"   ⚠️ ไม่พบตารางหลัก 'catalog-table' ในปี {year_be}/Q{quarter}!")
         return []
     product_rows = main_table.find('tbody').find_all('tr', recursive=False)
     if not product_rows:
-        print(f"   ⚠️ พบตารางหลัก แต่ไม่พบแถว (tr) โดยตรงในปี {year_be}/Q{quarter}!")
+        print(f"   ⚠️ พบตารางหลัก แต่ไม่พบแถว (tr) โดยตรงในปี {year_be}/Q{quarter}!")
         return []
 
     processed_count = 0
     for i, row in enumerate(product_rows):
+        # ... (โค้ดตั้งค่าตัวแปรเริ่มต้นเหมือนเดิม) ...
         table = row.find('table', class_='catalog-template')
         if not table: continue
-        product_id = f"CFP_Y{year_be}Q{quarter}_R{i+1}"; label_logo_type = "UNKNOWN"; product_name = None; functional_unit = None; scope = None; company_name = None; contact_person = None; phone = None; email = None; image_url = 'N/A'; detail_page_url = None; carbon_value = None; carbon_unit = None; cert_start_date_iso = None; cert_end_date_iso = None
-        category = "อื่นๆ"
+        
+        product_id = f"CFP_Y{year_be}Q{quarter}_R{i+1}"; 
+        label_logo_type = "UNKNOWN"; product_name = None; functional_unit = None; scope = None; company_name = None; contact_person = None; phone = None; email = None; image_url = 'N/A'; detail_page_url = None; 
+        carbon_value = None; carbon_unit = None; 
+        cert_start_date_iso = None; cert_end_date_iso = None
+        category = "อื่นๆ" # 🎯 เริ่มต้นเป็น "อื่นๆ"
+
         try:
+            # ... (โค้ดดึง ID, ดึง H1 (product_name) เหมือนเดิม) ...
             header_span = table.find('th', class_='catalog-header').find('span')
-            if header_span:
-                product_id = header_span.text.strip()
+            if header_span and header_span.text.strip():
+                real_id = header_span.text.strip()
+                product_id = real_id 
+                if "CFR" in real_id: label_logo_type = "CFR"
+                elif "CFP" in real_id: label_logo_type = "CFP"
+            else:
                 if "CFR" in product_id: label_logo_type = "CFR"
                 elif "CFP" in product_id: label_logo_type = "CFP"
+            
             name_tag = table.find('h1')
             if name_tag: product_name = name_tag.text.strip()
-            if product_name:
-                product_name_lower = product_name.lower()
-                for cat, keywords in CATEGORIES_KEYWORDS.items():
-                    if any(keyword in product_name_lower for keyword in keywords):
-                        category = cat
-                        break
+            
+            # --- 🎯 [แก้ไข] ตรรกะการจัดหมวดหมู่ (ใช้ AI) ---
+            if product_name and category_classifier: # 1. เช็คว่ามีชื่อ และ โหลดโมเดลสำเร็จ
+                try:
+                    # 2. "ถาม" โมเดล AI (ส่งชื่อผลิตภัณฑ์ไป 1 ชื่อ)
+                    # 💡 หมายเหตุ: ต้องส่งเป็น list [product_name]
+                    predicted_category_list = category_classifier.predict([product_name])
+                    
+                    # 3. รับ "คำตอบ" (จะได้คำตอบกลับมา 1 อัน)
+                    if predicted_category_list:
+                        category = predicted_category_list[0]
+                except Exception as e:
+                    print(f"   - ⚠️ เกิด Error ตอนใช้ AI (จะใช้ 'อื่นๆ'): {e}")
+                    category = "อื่นๆ"
+            
+            # ⛔ [ลบออก] เราไม่ต้องใช้ตรรกะ Scoring (วิธีที่ 1) อีกต่อไป
+            # if product_name:
+            #    product_name_lower = product_name.lower()
+            #    ... (ลบส่วนนี้ทิ้ง) ...
+            # --- 🎯 [สิ้นสุดการแก้ไข] ---
+
+
+            # ... (โค้ดส่วนที่เหลือ (col_r, col_l, H4, Regex, product_data) ทั้งหมดเหมือนเดิม) ...
+            
             col_r = table.find('td', class_='catalog-col-r')
             if col_r:
                 img_tag = col_r.find('img');
@@ -174,12 +253,29 @@ def parse_product_data(html_content, year_be, quarter): # เพิ่ม quarte
                 if qr_div:
                     qr_link = qr_div.find('a');
                     if qr_link and qr_link.get('href'): detail_page_url = qr_link['href']
+            
             col_l = table.find('td', class_='catalog-col-l')
             if col_l:
-                if not product_name:
-                     all_text_nodes = col_l.find_all(string=True, recursive=False);
-                     if all_text_nodes: product_name = all_text_nodes[0].strip()
+                if not product_name: 
+                    all_text_nodes = col_l.find_all(string=True, recursive=False);
+                    if all_text_nodes: product_name = all_text_nodes[0].strip()
+
+                carbon_h4 = col_l.find('h4') 
+                if carbon_h4:
+                    carbon_span = carbon_h4.find('span')
+                    if carbon_span:
+                        carbon_unit_tag = carbon_span.find('i')
+                        if carbon_unit_tag:
+                            carbon_unit = carbon_unit_tag.text.strip()
+                            value_text_nodes = [node for node in carbon_span.contents if isinstance(node, str)]
+                            if value_text_nodes:
+                                carbon_value_str = value_text_nodes[0].strip().replace(',', '')
+                                if carbon_value_str and carbon_value_str != '-':
+                                    try: carbon_value = float(carbon_value_str)
+                                    except ValueError: pass
+                
                 full_text_col_l = col_l.get_text(separator='\n', strip=True)
+                
                 unit_match = re.search(r"หน่วยการทำงาน:\s*(.+)", full_text_col_l);
                 if unit_match: functional_unit = unit_match.group(1).strip()
                 scope_match = re.search(r"ขอบเขต:\s*(.+)", full_text_col_l);
@@ -194,18 +290,24 @@ def parse_product_data(html_content, year_be, quarter): # เพิ่ม quarte
                     if phone_match.group(2): phone += f" #{phone_match.group(2).strip()}"
                 email_match = re.search(r"อีเมล์\s*(.+)", full_text_col_l, re.MULTILINE);
                 if email_match: email = email_match.group(1).strip()
-                carbon_match = re.search(r"(คาร์บอนฟุตพริ้นท์|Carbon Footprint|ลดการปล่อย)[^:]*:\s*([\d,.-]+)\s*(.*)", full_text_col_l);
-                if carbon_match:
-                    carbon_value_str = carbon_match.group(2).replace(',', ''); carbon_unit = carbon_match.group(3).strip();
-                    if carbon_value_str and carbon_value_str != '-':
-                        try: carbon_value = float(carbon_value_str)
-                        except ValueError: pass
+                
+                if carbon_value is None: 
+                    carbon_match = re.search(r"(คาร์บอนฟุตพริ้นท์|Carbon Footprint|ลดการปล่อย)[^:]*:\s*([\d,.-]+)\s*(.*)", full_text_col_l);
+                    if carbon_match:
+                        carbon_value_str = carbon_match.group(2).replace(',', ''); 
+                        if not carbon_unit:
+                            carbon_unit = carbon_match.group(3).strip()
+                        if carbon_value_str and carbon_value_str != '-':
+                            try: carbon_value = float(carbon_value_str)
+                            except ValueError: pass
+                
                 date_match = re.search(r"(วันรับรอง|Date of Approval)[^:]*:\s*(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})", full_text_col_l);
                 if date_match:
                     cert_start_date_iso = convert_be_to_iso(date_match.group(2)); cert_end_date_iso = convert_be_to_iso(date_match.group(3))
+            
             product_data = {
                 "product_id": product_id, "label_type": label_logo_type,
-                "product_name": product_name, "category": category,
+                "product_name": product_name, "category": category, # 🎯 นี่คือ Category ที่มาจาก AI
                 "functional_unit": functional_unit, "scope": scope,
                 "company_name": company_name, "contact_person": contact_person,
                 "phone": phone, "email": email, "image_url": image_url,
@@ -216,10 +318,9 @@ def parse_product_data(html_content, year_be, quarter): # เพิ่ม quarte
             all_products.append(product_data)
             processed_count += 1
         except Exception as e:
-            # print(f"   - ข้ามแถวที่ {i+1} เพราะ Error: {e} (ID: {product_id})")
+            # print(f"   - ข้ามแถวที่ {i+1} เพราะ Error: {e} (ID: {product_id})")
             continue
     return all_products
-
 
 # --- 7. ฟังก์ชันส่งข้อมูลเข้า Supabase ---
 def upload_to_supabase(products_list):
@@ -286,12 +387,24 @@ if __name__ == "__main__":
                 html = fetch_tgo_data_with_selenium(period_url) 
 
                 if html:
+                    # ใช้ Parser แบบการ์ด (ตัวเดิม)
                     products_this_period = parse_product_data(html, year_be, quarter)
 
                     if products_this_period:
                         initial_count = len(products_this_period)
 
+                        # --- 🎯 [เพิ่มเพื่อ DEBUG] ---
+                        # ลองพิมพ์ค่า carbon_value ของทุกรายการที่ดึงได้ในรอบนี้
+                        print(f"   [DEBUG] ตรวจสอบ {initial_count} รายการที่ดึงได้ (ก่อนกรอง ID ซ้ำ):")
+                        for p in products_this_period:
+                            print(f"     - ID: {p.get('product_id')}, Carbon: {p.get('carbon_value')}, Unit: {p.get('carbon_unit')}")
+                        print("   [DEBUG] สิ้นสุดการตรวจสอบ")
+                        # --- 🎯 [สิ้นสุด DEBUG] ---
+
+                        # กรอง ID ซ้ำ (ตรรกะเดิม)
                         unique_products_dict = {}
+                        
+
                         for product in products_this_period:
                             pid = product.get('product_id', f"TEMP_Y{year_be}Q{quarter}_{len(unique_products_dict)}")
                             if pid != "ID_NOT_FOUND" and pid not in unique_products_dict:
