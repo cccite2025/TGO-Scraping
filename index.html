@@ -1,4 +1,4 @@
-<!DOCTYPE html><!DOCTYPE html>
+<!DOCTYPE html><!DOCTYPE html><!DOCTYPE html>
 <html lang="th">
 <head>
     <meta charset="UTF-8">
@@ -209,8 +209,8 @@
                 </div>
                 
                 <div class="relative w-full max-w-xs ml-4">
-                    <input id="search-input" type="text" placeholder="ค้นหาวัสดุ..." class="w-full pl-10 pr-4 py-2 rounded-xl border border-[var(--border-gold)] bg-white/80 text-[var(--text-dark)] placeholder-[var(--grey-dark)] focus:outline-none focus:ring-2 focus:ring-[var(--gold)] focus:shadow-lg transition-all">
-                    <div class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--grey-dark)]">
+                    <input id="search-input" type="text" placeholder="ค้นหาวัสดุ... (กด Enter)" class="w-full pl-10 pr-4 py-2 rounded-xl border border-[var(--border-gold)] bg-white/80 text-[var(--text-dark)] placeholder-[var(--grey-dark)] focus:outline-none focus:ring-2 focus:ring-[var(--gold)] focus:shadow-lg transition-all">
+                    <div id="search-btn" class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--grey-dark)] cursor-pointer hover:text-[var(--gold)] transition-colors p-1">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="11" cy="11" r="8"></circle>
                             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -581,15 +581,34 @@
             }
 
             async function fetchSearchResults(query) {
+                console.log("กำลังค้นหาคำว่า:", query); // เช็คใน Console ว่าฟังก์ชันทำงานไหม
+
+                // ใช้คำสั่ง or เพื่อค้นหาหลายคอลัมน์พร้อมกัน
+                // สังเกต: ผมใส่ product_name และ category ซึ่งต้องตรงกับใน Supabase เป๊ะๆ
                 let { data, error } = await _supabase
                     .from('materials')
                     .select('*')
-                    .ilike('product_name', `%${query}%`)
+                    .or(`product_name.ilike.%${query}%,category.ilike.%${query}%`)
                     .limit(50);
 
-                if (error) throw error;
-                allFetchedProducts = [...allFetchedProducts, ...data.filter(p => !allFetchedProducts.find(ap => ap.id === p.id))];
-                return data;
+                if (error) {
+                    console.error("Supabase Search Error:", error);
+                    // ถ้าค้นหาไม่เจอ ลองค้นหาแค่ชื่อสินค้าอย่างเดียวก่อน (เผื่อคอลัมน์ category มีปัญหา)
+                    let retry = await _supabase
+                        .from('materials')
+                        .select('*')
+                        .ilike('product_name', `%${query}%`)
+                        .limit(50);
+                        
+                    if (retry.error) throw retry.error;
+                    data = retry.data;
+                }
+                
+                if (data) {
+                    allFetchedProducts = [...allFetchedProducts, ...data.filter(p => !allFetchedProducts.find(ap => ap.id === p.id))];
+                }
+                
+                return data || [];
             }
 
             function createHomePage() {
@@ -636,14 +655,18 @@
 
             function createProductCard(material, index) {
                 const delay = index * 50;
+                
+                // ตรวจสอบรูปภาพ
                 const imageUrl = material.image_url && material.image_url !== 'N/A' 
                     ? material.image_url 
                     : `https://placehold.co/400x300/e8f5e9/2e7d32?text=${encodeURIComponent(material.product_name || 'No Image')}`;
 
                 const linkAction = `onclick="showProductModal('${material.id}')"`;
                 
-                const cfpValue = material.cfp_value ? material.cfp_value : '-';
-                const cfpUnit = material.cfp_unit ? material.cfp_unit : '';
+                // --- แก้ไขตรงนี้: ดึงค่าคาร์บอนให้ถูกต้อง ---
+                // ลองดึงจาก carbon_value ก่อน ถ้าไม่มีลองดู cfp_value
+                const cfpValue = material.carbon_value || material.cfp_value || '-'; 
+                const cfpUnit = material.carbon_unit || material.cfp_unit || '';
 
                 return `
                     <div class="animated-bg rounded-2xl shadow-xl border border-white/50 overflow-hidden flex flex-col card-hover card-tilt cursor-pointer transition-all duration-500 opacity-0 translate-y-4" style="animation: slide-up 0.5s ease-out forwards ${delay}ms;" ${linkAction}>
@@ -878,9 +901,12 @@
                 }).join('');
             }
 
-            window.showProductModal = (id) => {
+           window.showProductModal = (id) => {
                 const material = allFetchedProducts.find(p => p.id == id);
                 if (!material) return;
+                
+                // Debug: ดูข้อมูลจริงใน Console
+                console.log("Product Data:", material);
 
                 const imageUrl = material.image_url && material.image_url !== 'N/A' 
                     ? material.image_url 
@@ -890,8 +916,13 @@
                 document.getElementById('modal-title').textContent = material.product_name || 'ไม่มีชื่อสินค้า';
                 document.getElementById('modal-category').textContent = material.category || 'ไม่มีหมวดหมู่';
                 document.getElementById('modal-description').textContent = material.description || 'ไม่มีคำอธิบายสำหรับสินค้านี้';
-                document.getElementById('modal-cfp-value').textContent = material.cfp_value || 'N/A';
-                document.getElementById('modal-cfp-unit').textContent = material.cfp_unit || 'N/A';
+                
+                // --- แก้ไขตรงนี้: ดึงค่าคาร์บอนให้ถูกต้องใน Modal ---
+                const cfpValue = material.carbon_value || material.cfp_value || 'N/A';
+                const cfpUnit = material.carbon_unit || material.cfp_unit || '';
+                
+                document.getElementById('modal-cfp-value').textContent = cfpValue;
+                document.getElementById('modal-cfp-unit').textContent = cfpUnit;
                 
                 const modalLink = document.getElementById('modal-link');
                 if (material.detail_page_url && material.detail_page_url.trim() !== '') {
@@ -907,7 +938,6 @@
                     modalContent.classList.remove('scale-95');
                 }, 10);
             };
-
             const hideModal = () => {
                 modal.classList.add('opacity-0', 'pointer-events-none');
                 modalContent.classList.add('scale-95');
@@ -924,6 +954,30 @@
                     searchInput.blur();
                 }
             });
+            // ตัวแปรปุ่มค้นหา
+            const searchBtn = document.getElementById('search-btn');
+
+            // ฟังก์ชันกลางสำหรับการสั่งค้นหา
+            const performSearch = () => {
+                const query = searchInput.value.trim();
+                if (query !== '') {
+                    console.log("สั่งค้นหา:", query);
+                    navigateTo('search', { query: query });
+                    searchInput.blur();
+                }
+            };
+
+            // กด Enter
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    performSearch();
+                }
+            });
+
+            // คลิกแว่นขยาย
+            searchBtn.addEventListener('click', (e) => {
+                  performSearch();
+            });
 
             modalCloseBtn.addEventListener('click', hideModal);
             modal.addEventListener('click', (e) => {
@@ -937,5 +991,4 @@
         });
     </script>
 </body>
-</html>
 </html>
